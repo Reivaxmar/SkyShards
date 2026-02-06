@@ -213,3 +213,14 @@ export interface RecipeOverrideManagerProps {
   onResetRecipeOverrides: () => void;
   children: (props: { showAlternatives: (shardId: string, context: AlternativeSelectionContext) => void; recipeOverrides: RecipeOverride[]; resetAlternatives: () => void }) => React.ReactNode;
 }
+
+// Profitable flip types
+export interface ProfitableFlip {
+  shardId: string;
+  shardName: string;
+  fusionCost: number;
+  sellPrice: number;
+  profit: number;
+  recipe: Recipe;
+  rarity: "common" | "uncommon" | "rare" | "epic" | "legendary";
+}

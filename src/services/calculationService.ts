@@ -908,6 +908,96 @@ export class CalculationService {
 
     return updatedOverrides;
   }
+
+  /**
+   * Calculate profitable flips: shards where fusion cost < sell price
+   * @param data The parsed data with shards and recipes
+   * @param params Calculation parameters
+   * @param buyPrices Prices for buying input shards (customRates)
+   * @param sellPrices Prices for selling output shards
+   * @returns Array of profitable flips sorted by profit (descending)
+   */
+  async calculateProfitableFlips(
+    data: Data,
+    params: CalculationParams,
+    buyPrices: Record<string, number>,
+    sellPrices: Record<string, number>
+  ): Promise<Array<{
+    shardId: string;
+    shardName: string;
+    fusionCost: number;
+    sellPrice: number;
+    profit: number;
+    recipe: Recipe;
+    rarity: "common" | "uncommon" | "rare" | "epic" | "legendary";
+  }>> {
+    const profitableFlips: Array<{
+      shardId: string;
+      shardName: string;
+      fusionCost: number;
+      sellPrice: number;
+      profit: number;
+      recipe: Recipe;
+      rarity: "common" | "uncommon" | "rare" | "epic" | "legendary";
+    }> = [];
+
+    const multipliers = this.calculateMultipliers(params);
+    const { crocodileMultiplier, craftPenalty } = multipliers;
+
+    // For each shard that has recipes
+    for (const shardId in data.recipes) {
+      const recipes = data.recipes[shardId];
+      const shard = data.shards[shardId];
+      
+      // Skip if no sell price available
+      const sellPrice = sellPrices[shardId];
+      if (!sellPrice || !isFinite(sellPrice)) {
+        continue;
+      }
+
+      // Check each recipe for this shard
+      for (const recipe of recipes) {
+        const [input1, input2] = recipe.inputs;
+        const fuse1 = data.shards[input1].fuse_amount;
+        const fuse2 = data.shards[input2].fuse_amount;
+
+        // Get buy prices for inputs
+        const buyPrice1 = buyPrices[input1];
+        const buyPrice2 = buyPrices[input2];
+
+        // Skip if input prices not available
+        if (!buyPrice1 || !isFinite(buyPrice1) || !buyPrice2 || !isFinite(buyPrice2)) {
+          continue;
+        }
+
+        // Calculate fusion cost
+        const totalCost = buyPrice1 * fuse1 + buyPrice2 * fuse2 + craftPenalty;
+        const effectiveOutput = recipe.isReptile ? recipe.outputQuantity * crocodileMultiplier : recipe.outputQuantity;
+        const fusionCostPerShard = totalCost / effectiveOutput;
+
+        // Calculate profit
+        const profit = sellPrice - fusionCostPerShard;
+
+        // Only include if profitable
+        if (profit > 0) {
+          profitableFlips.push({
+            shardId,
+            shardName: shard.name,
+            fusionCost: fusionCostPerShard,
+            sellPrice,
+            profit,
+            recipe,
+            rarity: shard.rarity,
+          });
+        }
+      }
+    }
+
+    // Sort by profit (highest first)
+    profitableFlips.sort((a, b) => b.profit - a.profit);
+
+    return profitableFlips;
+  }
 }
 
 // Create and export a default instance
