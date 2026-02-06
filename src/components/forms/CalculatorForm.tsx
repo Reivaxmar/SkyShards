@@ -258,7 +258,8 @@ export const CalculatorForm: React.FC<CalculatorFormProps> = ({ onSubmit }) => {
       // Load buy prices (for inputs) and sell prices (for outputs)
       const buyPrices = await dataService.loadShardCosts(form.instantBuyPrices);
       
-      // For sell prices, we need to fetch the opposite - if buying with instant buy, we sell with sell offers
+      // For sell prices, we use the opposite pricing mode:
+      // If we're using instant buy prices for inputs, we use sell offer prices for outputs (and vice versa)
       const sellPrices = await dataService.loadShardCosts(!form.instantBuyPrices);
       
       // Build params for calculation
