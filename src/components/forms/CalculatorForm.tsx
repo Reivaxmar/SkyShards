@@ -1,5 +1,5 @@
 import React from "react";
-import { Zap, RotateCcw, Settings, TriangleAlert, Layers } from "lucide-react";
+import { Zap, RotateCcw, Settings, TriangleAlert, Layers, TrendingUp } from "lucide-react";
 import { type CalculationFormData } from "../../schemas";
 import { ShardAutocomplete, MoneyInput } from "./inputs";
 import { useCalculatorState, useShards } from "../../hooks";
@@ -7,9 +7,10 @@ import { LevelDropdown, KuudraDropdown } from "../calculator";
 import {MAX_QUANTITIES, SHARD_DESCRIPTIONS} from "../../constants";
 import { isValidShardName, formatShardDescription } from "../../utilities";
 import { Tooltip, ToggleSwitch } from "../ui";
-import type { ShardWithKey } from "../../types/types";
-import { MultiSelectShardModal } from "../modals";
+import type { ShardWithKey, ProfitableFlip } from "../../types/types";
+import { MultiSelectShardModal, ProfitableFlipsModal } from "../modals";
 import { DataService } from "../../services";
+import { CalculationService } from "../../services/calculationService";
 
 interface CalculatorFormProps {
   onSubmit: (data: CalculationFormData) => void;
@@ -219,6 +220,11 @@ export const CalculatorForm: React.FC<CalculatorFormProps> = ({ onSubmit }) => {
   const [isMultiSelectModalOpen, setIsMultiSelectModalOpen] = React.useState(false);
   const [allShards, setAllShards] = React.useState<ShardWithKey[]>([]);
 
+  // Profitable Flips modal state
+  const [isProfitableFlipsModalOpen, setIsProfitableFlipsModalOpen] = React.useState(false);
+  const [profitableFlips, setProfitableFlips] = React.useState<ProfitableFlip[]>([]);
+  const [loadingFlips, setLoadingFlips] = React.useState(false);
+
   const handleOpenMultiSelect = React.useCallback(async () => {
     if (allShards.length === 0) {
       const dataService = DataService.getInstance();
@@ -240,6 +246,61 @@ export const CalculatorForm: React.FC<CalculatorFormProps> = ({ onSubmit }) => {
     },
     [form, setForm, onSubmit]
   );
+
+  const handleShowProfitableFlips = React.useCallback(async () => {
+    setIsProfitableFlipsModalOpen(true);
+    setLoadingFlips(true);
+    
+    try {
+      const dataService = DataService.getInstance();
+      const calculationService = CalculationService.getInstance();
+      
+      // Load buy prices (for inputs) and sell prices (for outputs)
+      const buyPrices = await dataService.loadShardCosts(form.instantBuyPrices);
+      
+      // For sell prices, we need to fetch the opposite - if buying with instant buy, we sell with sell offers
+      const sellPrices = await dataService.loadShardCosts(!form.instantBuyPrices);
+      
+      // Build params for calculation
+      const filteredCustomRates = Object.fromEntries(
+        Object.entries(buyPrices).filter(([, v]) => v !== undefined)
+      ) as { [shardId: string]: number };
+      
+      const params = {
+        customRates: filteredCustomRates,
+        hunterFortune: form.hunterFortune,
+        excludeChameleon: form.excludeChameleon,
+        frogBonus: form.frogBonus,
+        newtLevel: form.newtLevel,
+        salamanderLevel: form.salamanderLevel,
+        lizardKingLevel: form.lizardKingLevel,
+        leviathanLevel: form.leviathanLevel,
+        pythonLevel: form.pythonLevel,
+        kingCobraLevel: form.kingCobraLevel,
+        seaSerpentLevel: form.seaSerpentLevel,
+        tiamatLevel: form.tiamatLevel,
+        crocodileLevel: form.crocodileLevel,
+        kuudraTier: form.kuudraTier,
+        moneyPerHour: form.moneyPerHour,
+        customKuudraTime: form.customKuudraTime,
+        kuudraTimeSeconds: form.kuudraTimeSeconds,
+        noWoodenBait: form.noWoodenBait,
+        rateAsCoinValue: true,
+        craftPenalty: form.craftPenalty,
+      };
+      
+      // Parse data and calculate profitable flips
+      const data = await calculationService.parseData(params);
+      const flips = await calculationService.calculateProfitableFlips(data, params, buyPrices, sellPrices);
+      
+      setProfitableFlips(flips);
+    } catch (error) {
+      console.error("Failed to calculate profitable flips:", error);
+      setProfitableFlips([]);
+    } finally {
+      setLoadingFlips(false);
+    }
+  }, [form]);
 
   return (
     <div className="bg-slate-800/40 border border-slate-600/30 rounded-md p-3 space-y-3">
@@ -265,6 +326,24 @@ export const CalculatorForm: React.FC<CalculatorFormProps> = ({ onSubmit }) => {
             Normal Profile
           </button>
         </div>
+
+        {/* Profitable Flips Button - Only show in Normal mode */}
+        {!form.ironManView && (
+          <button
+            type="button"
+            onClick={handleShowProfitableFlips}
+            className="
+              w-full px-3 py-2.5
+              bg-green-500/10 border border-green-500/20 hover:border-green-400/30
+              rounded-md text-white hover:bg-green-500/20 
+              flex items-center justify-center space-x-2 
+              transition-colors duration-200 font-medium text-sm cursor-pointer
+            "
+          >
+            <TrendingUp className="w-4 h-4" />
+            <span>Show Profitable Flips</span>
+          </button>
+        )}
 
         {/* Materials Only Mode Toggle - Only show in Ironman mode */}
         {form.ironManView && (
@@ -415,6 +494,14 @@ export const CalculatorForm: React.FC<CalculatorFormProps> = ({ onSubmit }) => {
               (form.shardQuantities || []).map((item) => [item.shard.key, item.quantity])
             )
           }
+        />
+
+        {/* Profitable Flips Modal */}
+        <ProfitableFlipsModal
+          isOpen={isProfitableFlipsModalOpen}
+          onClose={() => setIsProfitableFlipsModalOpen(false)}
+          flips={profitableFlips}
+          loading={loadingFlips}
         />
 
         {/* Settings */}
